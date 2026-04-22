@@ -2,15 +2,20 @@
  * Embedding Service
  * Ported from production Ruby implementation (embedding_service.rb, 190 LOC)
  *
- * OpenAI text-embedding-3-large at 1536 dimensions.
+ * Configurable: reads model/dimensions/base_url from config chain
+ * (env vars > config.json > defaults: OpenAI text-embedding-3-large 1536d).
  * Retry with exponential backoff (4s base, 120s cap, 5 retries).
  * 8000 character input truncation.
  */
 
 import OpenAI from 'openai';
+import { loadConfig } from './config.ts';
+import { resolveEmbeddingConfig } from './embedding-config.ts';
 
-const MODEL = 'text-embedding-3-large';
-const DIMENSIONS = 1536;
+const embConfig = resolveEmbeddingConfig(loadConfig());
+
+const MODEL = embConfig.model;
+const DIMENSIONS = embConfig.dimensions;
 const MAX_CHARS = 8000;
 const MAX_RETRIES = 5;
 const BASE_DELAY_MS = 4000;
@@ -21,7 +26,10 @@ let client: OpenAI | null = null;
 
 function getClient(): OpenAI {
   if (!client) {
-    client = new OpenAI();
+    client = new OpenAI({
+      ...(embConfig.base_url ? { baseURL: embConfig.base_url } : {}),
+      ...(embConfig.api_key ? { apiKey: embConfig.api_key } : {}),
+    });
   }
   return client;
 }
@@ -65,7 +73,6 @@ async function embedBatchWithRetry(texts: string[]): Promise<Float32Array[]> {
       const response = await getClient().embeddings.create({
         model: MODEL,
         input: texts,
-        dimensions: DIMENSIONS,
       });
 
       // Sort by index to maintain order
