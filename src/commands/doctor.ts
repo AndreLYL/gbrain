@@ -278,6 +278,51 @@ export async function runDoctor(engine: BrainEngine | null, args: string[], dbSo
     // Best-effort. A broken JSONL should not stop doctor.
   }
 
+  // --- Embedding configuration diagnostics ---
+  try {
+    const { resolveEmbeddingConfig, KNOWN_EMBED_MODELS } = await import('../core/embedding-config.ts');
+    const { loadConfig: loadCfg } = await import('../core/config.ts');
+    const embCfg = resolveEmbeddingConfig(loadCfg());
+
+    const parts: string[] = [
+      `Provider: ${embCfg.provider}`,
+      `Model: ${embCfg.model}`,
+      `Dimensions: ${embCfg.dimensions}`,
+    ];
+    if (embCfg.base_url) parts.push(`Base URL: ${embCfg.base_url}`);
+
+    // Detect local Ollama
+    try {
+      const resp = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(3000) });
+      if (resp.ok) {
+        const data = await resp.json() as { models?: Array<{ name: string }> };
+        const ollamaModels = (data.models || []).map((m: { name: string }) => m.name.split(':')[0]);
+        const knownNames = KNOWN_EMBED_MODELS.map(m => m.name);
+        const embedModels = ollamaModels.filter((m: string) => knownNames.includes(m));
+        if (embedModels.length > 0) {
+          const modelList = embedModels.map((m: string) => {
+            const known = KNOWN_EMBED_MODELS.find(k => k.name === m);
+            const suffix = known && 'recommended' in known && known.recommended ? ' ← recommended' : '';
+            return `${m} (${known?.dimensions ?? '?'}d${suffix})`;
+          }).join(', ');
+          parts.push(`Ollama embedding models: ${modelList}`);
+        } else {
+          parts.push(`Ollama running but no embedding models found`);
+        }
+      }
+    } catch {
+      // Ollama not running — not an error
+    }
+
+    checks.push({
+      name: 'embedding_config',
+      status: 'ok',
+      message: parts.join(' | '),
+    });
+  } catch {
+    checks.push({ name: 'embedding_config', status: 'warn', message: 'Could not check embedding config' });
+  }
+
   // --- DB checks (skip if --fast or no engine) ---
 
   if (fastMode || !engine) {
