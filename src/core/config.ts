@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync } from 'f
 import { join } from 'path';
 import { homedir } from 'os';
 import type { EngineConfig } from './types.ts';
+import type { EmbeddingConfig } from './embedding-config.ts';
 
 /**
  * Where is the active DB URL coming from? Pure introspection, no connection
@@ -49,6 +50,14 @@ export interface GBrainConfig {
     capture?: boolean;
     /** false disables PII scrubbing before insert. Defaults to true. */
     scrub_pii?: boolean;
+  };
+  embedding?: Partial<EmbeddingConfig>;
+  feishu?: {
+    app_id?: string;
+    app_secret?: string;
+    calendar_ids?: string[];
+    doc_folders?: string[];
+    message_chats?: string[];
   };
 }
 
