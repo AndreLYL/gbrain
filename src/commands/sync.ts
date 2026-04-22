@@ -908,6 +908,14 @@ async function performFullSync(
 }
 
 export async function runSync(engine: BrainEngine, args: string[]) {
+  // --- Collector source routing ---
+  const sourceIdx = args.indexOf('--source');
+  if (sourceIdx !== -1 || args.includes('--list')) {
+    await handleCollectorSync(engine, args);
+    return;
+  }
+
+  // --- Existing git sync logic ---
   const repoPath = args.find((a, i) => args[i - 1] === '--repo') || undefined;
   const watch = args.includes('--watch');
   const intervalStr = args.find((a, i) => args[i - 1] === '--interval');
@@ -1250,5 +1258,85 @@ function printSyncResult(result: SyncResult) {
       console.log(`  See ~/.gbrain/sync-failures.jsonl for details, or run 'gbrain doctor'.`);
       console.log(`  Fix the files then re-run 'gbrain sync', or 'gbrain sync --skip-failed' to move on.`);
       break;
+  }
+}
+
+async function handleCollectorSync(engine: BrainEngine, args: string[]): Promise<void> {
+  const { listCollectors, getCollector } = await import('../collectors/registry.ts');
+
+  // --list: show available sources
+  if (args.includes('--list')) {
+    const all = listCollectors();
+    if (all.length === 0) {
+      console.log('No collectors registered. Install a collector plugin or check your configuration.');
+      return;
+    }
+    console.log('Available data sources:');
+    for (const c of all) {
+      console.log(`  ${c.id.padEnd(25)} ${c.description}`);
+    }
+    return;
+  }
+
+  const sourceIdx = args.indexOf('--source');
+  const sourceId = args[sourceIdx + 1];
+  if (!sourceId) {
+    console.error('Usage: gbrain sync --source <collector-id>');
+    process.exit(1);
+  }
+
+  const since = args.find((a, i) => args[i - 1] === '--since');
+  const dryRun = args.includes('--dry-run');
+  const limitStr = args.find((a, i) => args[i - 1] === '--limit');
+
+  // If sourceId is a prefix (e.g. "feishu"), run all matching collectors
+  const matchingCollectors = sourceId.includes('-')
+    ? [getCollector(sourceId)].filter(Boolean)
+    : listCollectors(sourceId);
+
+  if (matchingCollectors.length === 0) {
+    console.error(`Unknown source: ${sourceId}. Run 'gbrain sync --list' for available sources.`);
+    process.exit(1);
+  }
+
+  for (const collector of matchingCollectors) {
+    if (!collector) continue;
+
+    // Health check
+    const health = await collector.healthCheck();
+    if (!health.ok) {
+      console.error(`  [SKIP] ${collector.id}: ${health.message}`);
+      continue;
+    }
+
+    console.log(`Syncing ${collector.id}...`);
+    const results = await collector.fetch({
+      since,
+      dryRun,
+      limit: limitStr ? parseInt(limitStr, 10) : undefined,
+    });
+
+    if (dryRun) {
+      console.log(`  [DRY RUN] Would create ${results.length} pages:`);
+      for (const r of results.slice(0, 10)) {
+        console.log(`    ${r.slug} — ${r.title}`);
+      }
+      if (results.length > 10) console.log(`    ... and ${results.length - 10} more`);
+      continue;
+    }
+
+    // Write results through importFromContent
+    let created = 0;
+    const { importFromContent } = await import('../core/import-file.ts');
+    for (const result of results) {
+      try {
+        await importFromContent(engine, result.slug, result.content, { noEmbed: false });
+        created++;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`  [ERROR] ${result.slug}: ${msg}`);
+      }
+    }
+    console.log(`  ${collector.id}: ${created} pages synced`);
   }
 }

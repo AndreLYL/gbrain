@@ -512,6 +512,12 @@ async function handleCliOnly(command: string, args: string[]) {
         break;
       }
       case 'sync': {
+        // Register collectors before sync dispatch
+        try {
+          const { registerFeishuCollectors } = await import('./collectors/feishu/index.ts');
+          registerFeishuCollectors();
+        } catch { /* feishu collectors not available yet */ }
+
         const { runSync } = await import('./commands/sync.ts');
         await runSync(engine, args);
         break;
