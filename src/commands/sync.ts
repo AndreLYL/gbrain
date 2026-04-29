@@ -327,6 +327,15 @@ async function performSyncInner(engine: BrainEngine, opts: SyncOpts): Promise<Sy
     throw new Error(`Not a git repository: ${repoPath}. GBrain sync requires a git-initialized repo.`);
   }
 
+  // Include-path whitelist — required config to prevent accidental full-repo sync
+  const includePaths = await engine.getConfig('sync.include_paths') as string[] | undefined;
+  if (!includePaths || !Array.isArray(includePaths) || includePaths.length === 0) {
+    throw new Error(
+      'sync.include_paths not configured. Without it, sync would scan the entire repository.\n' +
+      'Fix: gbrain config set sync.include_paths \'["your-subdirectory"]\''
+    );
+  }
+
   // Git pull (unless --no-pull)
   if (!opts.noPull) {
     try {
@@ -358,7 +367,7 @@ async function performSyncInner(engine: BrainEngine, opts: SyncOpts): Promise<Sy
       git(repoPath, 'cat-file', '-t', lastCommit);
     } catch {
       console.error(`Sync anchor commit ${lastCommit.slice(0, 8)} missing (force push?). Running full reimport.`);
-      return performFullSync(engine, repoPath, headCommit, opts);
+      return performFullSync(engine, repoPath, headCommit, opts, includePaths);
     }
 
     // Verify ancestry
@@ -366,7 +375,7 @@ async function performSyncInner(engine: BrainEngine, opts: SyncOpts): Promise<Sy
       git(repoPath, 'merge-base', '--is-ancestor', lastCommit, headCommit);
     } catch {
       console.error(`Sync anchor ${lastCommit.slice(0, 8)} is not an ancestor of HEAD. Running full reimport.`);
-      return performFullSync(engine, repoPath, headCommit, opts);
+      return performFullSync(engine, repoPath, headCommit, opts, includePaths);
     }
   }
 
@@ -416,10 +425,10 @@ async function performSyncInner(engine: BrainEngine, opts: SyncOpts): Promise<Sy
   // Filter to syncable files (strategy-aware)
   const syncOpts = opts.strategy ? { strategy: opts.strategy } : undefined;
   const filtered: SyncManifest = {
-    added: manifest.added.filter(p => isSyncable(p, syncOpts)),
-    modified: manifest.modified.filter(p => isSyncable(p, syncOpts)),
-    deleted: manifest.deleted.filter(p => isSyncable(p, syncOpts)),
-    renamed: manifest.renamed.filter(r => isSyncable(r.to, syncOpts)),
+    added: manifest.added.filter(p => isSyncable(p, { ...syncOpts, includePaths })),
+    modified: manifest.modified.filter(p => isSyncable(p, { ...syncOpts, includePaths })),
+    deleted: manifest.deleted.filter(p => isSyncable(p, { ...syncOpts, includePaths })),
+    renamed: manifest.renamed.filter(r => isSyncable(r.to, { ...syncOpts, includePaths })),
   };
 
   // Delete pages that became un-syncable (modified but filtered out).
@@ -428,7 +437,7 @@ async function performSyncInner(engine: BrainEngine, opts: SyncOpts): Promise<Sy
   // became un-syncable (e.g., moved under `.gitignore` or filtered by
   // strategy=markdown) deletes the actual code-slug page, not a ghost
   // markdown-slug that never existed.
-  const unsyncableModified = manifest.modified.filter(p => !isSyncable(p, syncOpts));
+  const unsyncableModified = manifest.modified.filter(p => !isSyncable(p, { ...syncOpts, includePaths }));
   for (const path of unsyncableModified) {
     const slug = resolveSlugForPath(path);
     try {
@@ -795,6 +804,7 @@ async function performFullSync(
   repoPath: string,
   headCommit: string,
   opts: SyncOpts,
+  includePaths: string[],
 ): Promise<SyncResult> {
   // Dry-run: walk the repo, count syncable files, return without writing.
   // Fixes the silent-write-on-dry-run bug where performFullSync called
@@ -835,7 +845,7 @@ async function performFullSync(
   const importArgs = [repoPath];
   if (opts.noEmbed) importArgs.push('--no-embed');
   if (fullConcurrency > 1) importArgs.push('--workers', String(fullConcurrency));
-  const result = await runImport(engine, importArgs, { commit: headCommit });
+  const result = await runImport(engine, importArgs, { commit: headCommit, includePaths });
 
   // Bug 9 — gate the full-sync bookmark on success. runImport already
   // writes its own sync.last_commit conditionally (import.ts), but
