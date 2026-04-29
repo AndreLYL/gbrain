@@ -179,8 +179,17 @@ function matchesAnyGlob(path: string, patterns?: string[]): boolean {
 /**
  * Filter a file path to determine if it should be synced to GBrain.
  * Strategy-aware: 'markdown' (default) = .md/.mdx only, 'code' = code files only, 'auto' = both.
+ * When includePaths is provided and non-empty, only files under those
+ * directory prefixes are accepted.
  */
-export function isSyncable(path: string, opts: SyncableOptions = {}): boolean {
+export function isSyncable(path: string, opts: SyncableOptions & { includePaths?: string[] } = {}): boolean {
+  // Include-path whitelist: reject files not under any listed directory
+  const { includePaths } = opts;
+  if (includePaths && includePaths.length > 0) {
+    const normalized = includePaths.map(p => p.endsWith('/') ? p : p + '/');
+    if (!normalized.some(prefix => path.startsWith(prefix))) return false;
+  }
+
   const strategy = opts.strategy || 'markdown';
 
   if (!isAllowedByStrategy(path, strategy)) return false;

@@ -169,6 +169,49 @@ describe('isSyncable edge cases', () => {
   });
 });
 
+describe('isSyncable with includePaths', () => {
+  test('accepts files under included path', () => {
+    expect(isSyncable('andre_base/people/alice.md', ['andre_base'])).toBe(true);
+    expect(isSyncable('andre_base/notes/todo.md', ['andre_base'])).toBe(true);
+  });
+
+  test('rejects files outside included path', () => {
+    expect(isSyncable('Sources/article.md', ['andre_base'])).toBe(false);
+    expect(isSyncable('Clippings/clip.md', ['andre_base'])).toBe(false);
+    expect(isSyncable('random.md', ['andre_base'])).toBe(false);
+  });
+
+  test('handles trailing slash in includePaths', () => {
+    expect(isSyncable('andre_base/people/alice.md', ['andre_base/'])).toBe(true);
+    expect(isSyncable('Sources/article.md', ['andre_base/'])).toBe(false);
+  });
+
+  test('supports multiple include paths', () => {
+    const paths = ['andre_base', 'shared-notes'];
+    expect(isSyncable('andre_base/people/alice.md', paths)).toBe(true);
+    expect(isSyncable('shared-notes/todo.md', paths)).toBe(true);
+    expect(isSyncable('Sources/article.md', paths)).toBe(false);
+  });
+
+  test('without includePaths, behaves as before (no filtering)', () => {
+    expect(isSyncable('people/alice.md')).toBe(true);
+    expect(isSyncable('people/alice.md', undefined)).toBe(true);
+    expect(isSyncable('people/alice.md', [])).toBe(true);
+  });
+
+  test('includePaths does not match partial directory names', () => {
+    expect(isSyncable('andre_base/people/alice.md', ['andre'])).toBe(false);
+  });
+
+  test('existing filters still apply within included paths', () => {
+    expect(isSyncable('andre_base/.obsidian/plugins.md', ['andre_base'])).toBe(false);
+    expect(isSyncable('andre_base/people/pedro.raw/source.md', ['andre_base'])).toBe(false);
+    expect(isSyncable('andre_base/README.md', ['andre_base'])).toBe(false);
+    // Note: ops/ filter only matches top-level ops/, not nested andre_base/ops/
+    // This is existing behavior — not changed by includePaths
+  });
+});
+
 describe('buildSyncManifest edge cases', () => {
   test('handles tab-separated fields correctly', () => {
     const output = "A\tpath/to/file.md";
