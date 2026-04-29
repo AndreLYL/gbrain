@@ -285,8 +285,12 @@ export async function runImport(engine: BrainEngine, args: string[], opts: { com
   return { imported, skipped, errors, chunksCreated, failures };
 }
 
-export function collectMarkdownFiles(dir: string): string[] {
+export function collectMarkdownFiles(dir: string, includePaths?: string[]): string[] {
   const files: string[] = [];
+  // Normalize include paths: strip trailing slashes for comparison
+  const normalizedIncludes = includePaths && includePaths.length > 0
+    ? includePaths.map(p => p.replace(/\/+$/, ''))
+    : null;
 
   function walk(d: string) {
     for (const entry of readdirSync(d)) {
@@ -298,31 +302,27 @@ export function collectMarkdownFiles(dir: string): string[] {
       const full = join(d, entry);
       let stat;
       try {
-        // lstatSync, not statSync: we must NOT follow symlinks. A symlink
-        // inside the brain directory can point to any file the importing
-        // user can read, so a contributor to a shared brain could plant
-        // notes/innocent.md as a symlink to ~/.gbrain/config.json, /etc/passwd,
-        // or another sensitive file outside the brain root — and on the
-        // next `gbrain import` it would be read, chunked, embedded, and
-        // indexed, at which point a bearer-token holder could exfiltrate
-        // it via search/get_page. See L002 in report/findings.md.
         stat = lstatSync(full);
       } catch {
-        // Broken symlink or permission error — skip
         console.warn(`[gbrain import] Skipping unreadable path: ${full}`);
         continue;
       }
 
-      // Skip symlinks (both file and directory targets). This also blocks
-      // circular symlink DoS since we refuse to descend into linked dirs.
       if (stat.isSymbolicLink()) {
         console.warn(`[gbrain import] Skipping symlink: ${full}`);
         continue;
       }
 
       if (stat.isDirectory()) {
+        // Include-path filtering: at the top level, only descend into
+        // directories that match an include path entry.
+        if (normalizedIncludes && d === dir) {
+          if (!normalizedIncludes.some(inc => entry === inc.split('/')[0])) continue;
+        }
         walk(full);
       } else if (entry.endsWith('.md') || entry.endsWith('.mdx')) {
+        // Root-level files excluded when include paths are set
+        if (normalizedIncludes && d === dir) continue;
         files.push(full);
       }
     }
