@@ -117,7 +117,7 @@ export const feishuTasksCollector: Collector = {
 
     // Fetch tasks
     try {
-      const taskData = await larkCli('task', ['list', ...taskArgs], config) as { tasks?: FeishuTask[] };
+      const taskData = await larkCli(['task', '+get-my-tasks', '--page-all', ...taskArgs], config) as { tasks?: FeishuTask[] };
       for (const task of taskData.tasks || []) {
         results.push({
           slug: buildTaskSlug('task', task.title),
@@ -129,19 +129,7 @@ export const feishuTasksCollector: Collector = {
       }
     } catch { /* tasks API may not be available */ }
 
-    // Fetch OKRs
-    try {
-      const okrData = await larkCli('okr', ['list', ...taskArgs], config) as { okrs?: FeishuOkr[] };
-      for (const okr of okrData.okrs || []) {
-        results.push({
-          slug: buildTaskSlug('okr', okr.title),
-          title: `OKR ${okr.period}：${okr.title}`,
-          type: 'concept',
-          content: formatOkrPage(okr),
-          tags: ['OKR', okr.period],
-        });
-      }
-    } catch { /* OKR API may not be available */ }
+    // OKR: lark-cli doesn't have an okr command yet — skip for now
 
     if (!opts.dryRun && results.length > 0) {
       saveCollectorState('feishu-tasks', { last_sync: new Date().toISOString() });

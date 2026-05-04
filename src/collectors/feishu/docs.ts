@@ -56,17 +56,31 @@ export const feishuDocsCollector: Collector = {
     const state = loadCollectorState('feishu-docs');
     const since = opts.since || state?.last_sync;
 
-    const args: string[] = [];
-    if (since) args.push('--since', since);
-    if (opts.limit) args.push('--limit', String(opts.limit));
+    const baseArgs: string[] = [];
+    if (since) baseArgs.push('--since', since);
+    if (opts.limit) baseArgs.push('--limit', String(opts.limit));
 
     const docFolders = fileConfig?.feishu?.doc_folders;
     if (docFolders && docFolders.length > 0) {
-      args.push('--folders', docFolders.join(','));
+      baseArgs.push('--folders', docFolders.join(','));
     }
 
-    const data = await larkCli('docs', ['list', ...args], config) as { docs?: FeishuDoc[] };
-    const docs = data.docs || [];
+    // Paginate through all docs
+    const allDocs: FeishuDoc[] = [];
+    let pageToken: string | undefined;
+    do {
+      const args = [...baseArgs];
+      if (pageToken) args.push('--page-token', pageToken);
+      const data = await larkCli(['docs', '+search', ...args], config) as {
+        docs?: FeishuDoc[];
+        has_more?: boolean;
+        page_token?: string;
+      };
+      if (data.docs) allDocs.push(...data.docs);
+      pageToken = data.has_more ? data.page_token : undefined;
+    } while (pageToken);
+
+    const docs = allDocs;
 
     const results: CollectorResult[] = docs.map(doc => ({
       slug: buildDocsSlug(doc.title),

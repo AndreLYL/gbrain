@@ -94,7 +94,7 @@ export const feishuCalendarCollector: Collector = {
       args.push('--calendars', calendarIds.join(','));
     }
 
-    const data = await larkCli('calendar', ['events', ...args], config) as { events?: CalendarEvent[] };
+    const data = await larkCli(['calendar', '+agenda', ...args], config) as { events?: CalendarEvent[] };
     const events = data.events || [];
 
     const results: CollectorResult[] = events.map(event => ({

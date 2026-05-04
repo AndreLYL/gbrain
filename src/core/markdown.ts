@@ -371,6 +371,18 @@ function inferType(filePath?: string): PageType {
   if (lower.includes('/cal/') || lower.includes('/calendar/')) return 'calendar-event';
   if (lower.includes('/notes/') || lower.includes('/note/')) return 'note';
   if (lower.includes('/meetings/') || lower.includes('/meeting/')) return 'meeting';
+
+  // Obsidian vault paths (andre_base and similar)
+  if (lower.includes('/specs/')) return 'spec';
+  if (lower.includes('/plans/')) return 'plan';
+  if (lower.includes('/drafts/')) return 'draft';
+  if (lower.includes('/research/')) return 'research';
+  if (lower.includes('/review/')) return 'review';
+  if (lower.includes('/archive/') || lower.includes('/04-archive/')) return 'archive';
+  if (lower.includes('/resources/') || lower.includes('/03-resources/')) return 'resource';
+  if (lower.includes('/clippings/')) return 'clipping';
+  if (lower.includes('/agents/') || lower.includes('/05-agents/')) return 'reference';
+  if (lower.includes('/01-projects/')) return 'guide';
   return 'concept';
 }
 

@@ -328,7 +328,8 @@ async function performSyncInner(engine: BrainEngine, opts: SyncOpts): Promise<Sy
   }
 
   // Include-path whitelist — required config to prevent accidental full-repo sync
-  const includePaths = await engine.getConfig('sync.include_paths') as string[] | undefined;
+  const rawInclude = await engine.getConfig('sync.include_paths');
+  const includePaths: string[] | undefined = rawInclude ? JSON.parse(rawInclude) : undefined;
   if (!includePaths || !Array.isArray(includePaths) || includePaths.length === 0) {
     throw new Error(
       'sync.include_paths not configured. Without it, sync would scan the entire repository.\n' +
